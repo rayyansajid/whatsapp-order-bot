@@ -3,7 +3,7 @@
 import os
 from typing import Any, Protocol
 
-DEFAULT_MODEL = "claude-opus-5-5"
+DEFAULT_MODEL = "claude-haiku-5-5"
 
 
 class LLMError(RuntimeError):
@@ -31,7 +31,7 @@ class AnthropicLLM:
         return self._client
 
     def complete_json(self, system: str, user: str, schema: dict[str, Any]) -> str:
-        response = self._get_client().beta.messages.create(
+        response = self._get_client().messages.create(
             model=self.model,
             max_tokens=4096,
             system=system,
@@ -40,8 +40,6 @@ class AnthropicLLM:
                 "effort": "low",
                 "format": {"type": "json_schema", "schema": schema},
             },
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
         )
         if response.stop_reason in ("refusal", "max_tokens"):
             raise LLMError(f"LLM stopped early: {response.stop_reason}")
