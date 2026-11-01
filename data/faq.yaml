@@ -1,0 +1,19 @@
+# Fictional restaurant — demo data only
+- topic: hours
+  keywords: [hours, open, opening, close, closing, timings]
+  answer: >-
+    We're open Tue–Sun, 11:30am–10:00pm (Fri–Sat until 11:00pm). Closed Mondays.
+- topic: delivery
+  keywords: [delivery, deliver, delivering, fee, minimum]
+  answer: >-
+    We deliver within 3 miles of the restaurant. Delivery is free on orders over $30,
+    otherwise $3.99. Most orders arrive in 35–50 minutes.
+- topic: location
+  keywords: [location, located, where, directions, parking]
+  answer: >-
+    Saffron Lane Kitchen is at 42 Saffron Lane, Springfield (a fictional address).
+    Street parking is available after 6pm.
+- topic: payment
+  keywords: [payment, pay, card, cash]
+  answer: >-
+    We accept cash and card on delivery.
