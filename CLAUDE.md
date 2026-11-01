@@ -18,3 +18,9 @@ Portfolio demo: a WhatsApp ordering bot for **Saffron Lane Kitchen**, a fictiona
 - **Test only what's required.** Cover the behavior that matters. Skip exhaustive edge cases and redundant tests.
 - **Never commit secrets.** Real keys go in `.env`, which is gitignored. Only `.env.example` with empty values is committed.
 - Run the tests and ruff before every commit.
+
+## Workflow
+- Each feature or fix gets its own branch off `main`.
+- When done, push the branch and open the PR with `gh pr create --base main`. Write the title and body yourself: summary, tests, notes.
+- Print the PR URL. Don't paste the PR body into the chat summary.
+- The human only merges the PR and deletes the branch.
