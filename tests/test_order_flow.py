@@ -40,3 +40,31 @@ def test_order_flow_saves_confirmed_order(make_client) -> None:
         ("garlic-naan", 1),
     ]
     assert "Alex" in client.get("/orders").text
+
+
+def _start_cart(make_client):
+    llm = FakeLLM(
+        json.dumps({"intent": "order", "items": [{"id": "samosa", "quantity": 1}], "reply": ""})
+    )
+    client = make_client(llm)
+
+    def say(text: str) -> str:
+        return client.post("/api/chat", json={"session_id": "s1", "message": text}).json()["reply"]
+
+    say("order")
+    say("one samosa")
+    return client, say
+
+
+def test_natural_wording_finishes_items(make_client) -> None:
+    _, say = _start_cart(make_client)
+    assert "name" in say("Yeah I think I don't actually need anything else")
+
+
+def test_natural_wording_confirms_order(make_client) -> None:
+    client, say = _start_cart(make_client)
+    say("that's all")
+    say("Alex")
+    say("12 Test Street")
+    assert "confirmed" in say("yeah go ahead")
+    assert len(client.app.state.store.list_orders()) == 1
