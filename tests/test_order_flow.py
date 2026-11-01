@@ -68,3 +68,22 @@ def test_natural_wording_confirms_order(make_client) -> None:
     say("12 Test Street")
     assert "confirmed" in say("yeah go ahead")
     assert len(client.app.state.store.list_orders()) == 1
+
+
+def test_name_step_extracts_only_the_name(make_client) -> None:
+    _, say = _start_cart(make_client)
+    say("that's all")
+    assert say("I am Tony Stark") == "Thanks, Tony Stark! What's the delivery address?"
+
+    _, say = _start_cart(make_client)
+    say("that's all")
+    assert say("Go with Bruce Banner") == "Thanks, Bruce Banner! What's the delivery address?"
+
+
+def test_address_step_asks_again_when_not_an_address(make_client) -> None:
+    _, say = _start_cart(make_client)
+    say("that's all")
+    say("Tony Stark")
+    assert "full address" in say("I live with Tony Stark")
+    summary = say("I live at 10880 Malibu Point")
+    assert "Deliver to: 10880 Malibu Point" in summary
