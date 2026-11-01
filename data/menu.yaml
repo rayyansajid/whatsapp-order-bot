@@ -1,0 +1,66 @@
+# Fictional restaurant — demo data only
+restaurant:
+  name: Saffron Lane Kitchen
+  currency: USD
+
+items:
+  - id: samosa
+    name: Vegetable Samosa (2 pcs)
+    category: starters
+    price: 5.50
+  - id: chicken-tikka
+    name: Chicken Tikka
+    category: starters
+    price: 8.95
+  - id: paneer-pakora
+    name: Paneer Pakora
+    category: starters
+    price: 7.50
+  - id: lentil-soup
+    name: Lentil Soup
+    category: starters
+    price: 4.95
+  - id: butter-chicken
+    name: Butter Chicken
+    category: mains
+    price: 15.95
+  - id: lamb-rogan-josh
+    name: Lamb Rogan Josh
+    category: mains
+    price: 17.50
+  - id: chana-masala
+    name: Chana Masala
+    category: mains
+    price: 12.95
+  - id: palak-paneer
+    name: Palak Paneer
+    category: mains
+    price: 13.95
+  - id: chicken-biryani
+    name: Chicken Biryani
+    category: mains
+    price: 16.50
+  - id: garlic-naan
+    name: Garlic Naan
+    category: sides
+    price: 3.50
+  - id: basmati-rice
+    name: Basmati Rice
+    category: sides
+    price: 3.00
+  - id: raita
+    name: Cucumber Raita
+    category: sides
+    price: 2.95
+  - id: mango-lassi
+    name: Mango Lassi
+    category: drinks
+    price: 4.50
+  - id: masala-chai
+    name: Masala Chai
+    category: drinks
+    price: 3.25
+  - id: gulab-jamun
+    name: Gulab Jamun
+    category: desserts
+    price: 5.25
