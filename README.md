@@ -32,7 +32,7 @@ Without `ANTHROPIC_API_KEY`, menu, FAQ and the command-driven flow still work. F
 | Variable | Purpose |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | Claude API key |
-| `ANTHROPIC_MODEL` | Optional model override (default `claude-opus-5-5`) |
+| `ANTHROPIC_MODEL` | Optional model override (default `claude-haiku-5-5`) |
 | `VERIFY_TOKEN` | Any string you choose; must match the token you enter in Meta's webhook setup |
 | `WHATSAPP_TOKEN` | WhatsApp Cloud API access token |
 | `WHATSAPP_PHONE_ID` | Phone number ID that sends replies |
