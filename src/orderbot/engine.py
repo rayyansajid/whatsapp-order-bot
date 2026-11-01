@@ -60,6 +60,35 @@ YES_RE = re.compile(
     r"\b(yes|yeah|yep|yup|sure|ok|okay|confirm|go ahead|place it|sounds good|do it)\b"
 )
 NO_RE = re.compile(r"\b(no|nope|nah|cancel|never ?mind|start over|don'?t|do not)\b")
+# Menu / price requests get the exact menu text, never an LLM paraphrase.
+MENU_RE = re.compile(
+    r"\b(menu|prices?|price list|list of (items|dishes|food)"
+    r"|what (do|can) you (have|serve|sell|offer)|what'?s available)\b"
+)
+
+NAME_SCHEMA = {
+    "type": "object",
+    "properties": {"name": {"type": "string"}},
+    "required": ["name"],
+    "additionalProperties": False,
+}
+NAME_PREFIX_RE = re.compile(
+    r"^((hi|hello|hey)[\s,!]+)?(my name is|my name's|name is|name's|i am|i'm|im|this is"
+    r"|it's|its|call me|go with|put it under)\s+",
+    re.IGNORECASE,
+)
+NAME_RE = re.compile(r"^[^\W\d_]+(?:[ '.-][^\W\d_]+){0,3}$")
+ADDRESS_PREFIX_RE = re.compile(
+    r"^(my address is|address is|address:|deliver (it )?to|send (it )?to"
+    r"|i live (at|in|on)|i'm (at|in)|i am (at|in))\s+",
+    re.IGNORECASE,
+)
+ADDRESS_HINT_RE = re.compile(
+    r"\d|\b(street|st|road|rd|avenue|ave|lane|ln|drive|dr|boulevard|blvd|way|place"
+    r"|court|ct|block|sector|phase|area|town|colony|apartment|apt|flat|house|floor"
+    r"|suite|building|near)\b",
+    re.IGNORECASE,
+)
 
 
 def normalize(text: str) -> str:
@@ -68,12 +97,31 @@ def normalize(text: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9' ]+", " ", text).split())
 
 
+def strip_name(text: str) -> str:
+    name = NAME_PREFIX_RE.sub("", text.strip().replace("’", "'"))
+    name = re.sub(r"[\s,]*\b(please|thanks|thank you)\b.*$", "", name, flags=re.IGNORECASE)
+    return name.strip(" .!,")
+
+
+def extract_address(text: str) -> tuple[str, bool]:
+    """Return the address without 'I live at'-style wording and whether it looks like one.
+
+    It looks like an address if it has a number, a street/area word, or followed
+    'I live in / at'. "I live with Tony Stark" has none of these.
+    """
+    text = text.strip().replace("’", "'")
+    match = ADDRESS_PREFIX_RE.match(text)
+    address = text[match.end() :].strip(" .!,") if match else text.strip(" .!,")
+    return address, bool(address) and (bool(match) or bool(ADDRESS_HINT_RE.search(address)))
+
+
 @dataclass
 class Session:
     state: str = "idle"  # idle -> items -> name -> address -> confirm
     cart: dict[str, int] = field(default_factory=dict)
     name: str = ""
     address: str = ""
+    address_retry: bool = False
 
 
 class ConversationEngine:
@@ -98,11 +146,18 @@ class ConversationEngine:
             return "No problem, I've cleared your order. Say *order* whenever you're ready."
 
         if session.state == "name":
-            session.name = text[:80]
+            session.name = self._extract_name(text)[:80]
             session.state = "address"
             return f"Thanks, {session.name}! What's the delivery address?"
         if session.state == "address":
-            session.address = text[:300]
+            address, looks_valid = extract_address(text)
+            if not looks_valid and not session.address_retry:
+                session.address_retry = True
+                return (
+                    "Sorry, that doesn't look like a delivery address. Please send the full "
+                    "address with house number, street and area."
+                )
+            session.address = address[:300]
             session.state = "confirm"
             return self._summary(session) + "\n\nReply *yes* to place the order or *cancel*."
         if session.state == "confirm":
@@ -124,7 +179,7 @@ class ConversationEngine:
         # idle / items: commands first, then FAQ, then the LLM
         if low in GREETINGS:
             return self._welcome()
-        if "menu" in low.split():
+        if MENU_RE.search(normalize(text)):
             return self.catalog.menu_text() + "\n\nTell me what you'd like to order."
         if session.state == "items" and (low in DONE or self._says_finished(text)):
             return self._finish_items(session)
@@ -135,6 +190,24 @@ class ConversationEngine:
         if faq:
             return faq.answer
         return self._interpret(session, text)
+
+    def _extract_name(self, text: str) -> str:
+        """Strip 'I am' / 'my name is'-style wording; ask the LLM only if it's still unclear."""
+        name = strip_name(text)
+        if NAME_RE.match(name):
+            return name
+        try:
+            raw = self.llm.complete_json(
+                "Extract the customer's name from their message. Return only the name, "
+                "as written. If there is no name, return an empty string.",
+                text,
+                NAME_SCHEMA,
+            )
+            extracted = str(json.loads(raw).get("name") or "").strip()
+        except Exception as exc:
+            log.warning("LLM name extraction failed: %s", exc)
+            extracted = ""
+        return extracted or name
 
     def _says_finished(self, text: str) -> bool:
         """'that's all'-style phrase, as long as the message doesn't also name dishes."""
@@ -258,17 +331,25 @@ class ConversationEngine:
             '- intent "order" if they name dishes they want. Put each dish in `items` '
             "using the exact menu id and a quantity (default 1). Skip dishes not on the menu "
             "and mention them in `reply`.\n"
-            '- intent "question" if they ask something. Answer in `reply` using only the '
-            "menu and FAQ below; if the answer isn't there, say you're not sure and suggest "
-            "calling the restaurant. Keep it to 1-3 short sentences.\n"
+            '- intent "question" if they ask something about this restaurant or ordering. '
+            "Answer in `reply` in 1-3 short sentences, following the grounding rules.\n"
             '- intent "finish" if they say they are done adding items (e.g. "that\'s all", '
             '"I don\'t need anything else"). Put any dishes named in the same message in '
             "`items`.\n"
             '- intent "confirm" if they agree to place the order (e.g. "yeah go ahead").\n'
             '- intent "cancel" if they decline, cancel or want to start over.\n'
             '- intent "other" for anything else, with a short friendly `reply` that steers '
-            "back to the menu or ordering.\n"
-            "Never invent dishes, prices, or policies.\n\n"
+            "back to the menu or ordering.\n\n"
+            "GROUNDING RULES (always follow):\n"
+            "- Only state facts that appear in the MENU and FAQ below. Never invent dishes, "
+            "prices, policies or details.\n"
+            "- The data has nothing on ingredients, spice level, allergens, kids' options or "
+            "items not listed (e.g. water or other drinks). For anything like that, say you "
+            "don't have that information and the restaurant staff will confirm.\n"
+            "- Never make claims about allergens, dietary suitability (e.g. for children, "
+            "vegans, diabetics) or health, and don't recommend dishes on that basis.\n"
+            "- Only help with ordering from this restaurant. Politely decline unrelated "
+            "requests and offer to help with an order instead.\n\n"
             f"CURRENT STEP: {session.state} (items = adding dishes, confirm = order summary "
             "shown, waiting for yes/no)\n\n"
             f"MENU\n{menu}\n\nFAQ\n{self.catalog.faq_text()}"
