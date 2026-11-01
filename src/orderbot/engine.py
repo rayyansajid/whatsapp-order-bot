@@ -7,6 +7,7 @@ or answer a question grounded in the menu and FAQ.
 
 import json
 import logging
+import re
 import threading
 from dataclasses import dataclass, field
 
@@ -21,7 +22,10 @@ MAX_QUANTITY = 20
 INTERPRET_SCHEMA = {
     "type": "object",
     "properties": {
-        "intent": {"type": "string", "enum": ["order", "question", "other"]},
+        "intent": {
+            "type": "string",
+            "enum": ["order", "question", "finish", "confirm", "cancel", "other"],
+        },
         "items": {
             "type": "array",
             "items": {
@@ -46,6 +50,23 @@ CANCEL = {"cancel", "reset", "start over", "stop"}
 DONE = {"done", "that's all", "thats all", "that's it", "thats it", "no", "nope", "checkout"}
 YES = {"yes", "y", "yep", "yeah", "confirm", "ok", "okay"}
 
+# Phrase checks that work without the LLM (e.g. when the free tier is rate limited).
+FINISH_RE = re.compile(
+    r"\b(that'?s (all|it|everything)|nothing (else|more)|no (thanks|thank you|more)"
+    r"|(i'?m|i am) (done|good|finished|all set)"
+    r"|(don'?t|do not) (\w+ ){0,2}(need|want) (anything|any ?more))\b"
+)
+YES_RE = re.compile(
+    r"\b(yes|yeah|yep|yup|sure|ok|okay|confirm|go ahead|place it|sounds good|do it)\b"
+)
+NO_RE = re.compile(r"\b(no|nope|nah|cancel|never ?mind|start over|don'?t|do not)\b")
+
+
+def normalize(text: str) -> str:
+    """Lowercase, straighten apostrophes and drop other punctuation."""
+    text = text.lower().replace("’", "'")
+    return " ".join(re.sub(r"[^a-z0-9' ]+", " ", text).split())
+
 
 @dataclass
 class Session:
@@ -62,6 +83,9 @@ class ConversationEngine:
         self.store = store
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
+        self._menu_words = {
+            w for i in catalog.items.values() for w in normalize(i.name).split() if len(w) > 3
+        }
 
     def handle(self, customer_id: str, text: str) -> str:
         with self._lock:
@@ -84,6 +108,17 @@ class ConversationEngine:
         if session.state == "confirm":
             if low in YES:
                 return self._place_order(customer_id, session)
+            norm = normalize(text)
+            said_yes, said_no = bool(YES_RE.search(norm)), bool(NO_RE.search(norm))
+            if said_yes != said_no:
+                intent = "confirm" if said_yes else "cancel"
+            else:  # neither or both: let the LLM decide
+                intent = self._interpret_intent(session, text)
+            if intent == "confirm":
+                return self._place_order(customer_id, session)
+            if intent == "cancel":
+                self._sessions[customer_id] = Session()
+                return "No problem, I've cancelled that order. Say *order* to start again."
             return "Please reply *yes* to place the order, or *cancel* to start over."
 
         # idle / items: commands first, then FAQ, then the LLM
@@ -91,11 +126,8 @@ class ConversationEngine:
             return self._welcome()
         if "menu" in low.split():
             return self.catalog.menu_text() + "\n\nTell me what you'd like to order."
-        if session.state == "items" and low in DONE:
-            if not session.cart:
-                return "Your cart is empty. What would you like to order?"
-            session.state = "name"
-            return "Great! What name should we put the order under?"
+        if session.state == "items" and (low in DONE or self._says_finished(text)):
+            return self._finish_items(session)
         if low in START_ORDER:
             session.state = "items"
             return "What would you like? For example: _2 butter chicken and 1 garlic naan_."
@@ -104,9 +136,30 @@ class ConversationEngine:
             return faq.answer
         return self._interpret(session, text)
 
+    def _says_finished(self, text: str) -> bool:
+        """'that's all'-style phrase, as long as the message doesn't also name dishes."""
+        norm = normalize(text)
+        if any(c.isdigit() for c in norm) or self._menu_words.intersection(norm.split()):
+            return False
+        return bool(FINISH_RE.search(norm))
+
+    def _finish_items(self, session: Session) -> str:
+        if not session.cart:
+            return "Your cart is empty. What would you like to order?"
+        session.state = "name"
+        return "Great! What name should we put the order under?"
+
+    def _interpret_intent(self, session: Session, text: str) -> str:
+        try:
+            raw = self.llm.complete_json(self._system_prompt(session), text, INTERPRET_SCHEMA)
+            return str(json.loads(raw).get("intent") or "other")
+        except Exception as exc:
+            log.warning("LLM intent check failed: %s", exc)
+            return "other"
+
     def _interpret(self, session: Session, text: str) -> str:
         try:
-            raw = self.llm.complete_json(self._system_prompt(), text, INTERPRET_SCHEMA)
+            raw = self.llm.complete_json(self._system_prompt(session), text, INTERPRET_SCHEMA)
             result = json.loads(raw)
         except LLMUnavailableError as exc:
             log.warning("LLM unavailable: %s", exc)
@@ -125,6 +178,9 @@ class ConversationEngine:
                 session.cart[item.id] = min(session.cart.get(item.id, 0) + qty, MAX_QUANTITY)
                 added.append(f"{qty} × {item.name}")
 
+        if result.get("intent") == "finish" and session.state == "items":
+            prefix = "Added " + ", ".join(added) + ".\n\n" if added else ""
+            return prefix + self._finish_items(session)
         if added:
             session.state = "items"
             return (
@@ -190,7 +246,7 @@ class ConversationEngine:
             "or ask about our hours, delivery or location."
         )
 
-    def _system_prompt(self) -> str:
+    def _system_prompt(self, session: Session) -> str:
         menu = "\n".join(
             f"- id={i.id} | {i.name} | {i.category} | {money(i.price_cents)}"
             for i in self.catalog.items.values()
@@ -205,8 +261,15 @@ class ConversationEngine:
             '- intent "question" if they ask something. Answer in `reply` using only the '
             "menu and FAQ below; if the answer isn't there, say you're not sure and suggest "
             "calling the restaurant. Keep it to 1-3 short sentences.\n"
+            '- intent "finish" if they say they are done adding items (e.g. "that\'s all", '
+            '"I don\'t need anything else"). Put any dishes named in the same message in '
+            "`items`.\n"
+            '- intent "confirm" if they agree to place the order (e.g. "yeah go ahead").\n'
+            '- intent "cancel" if they decline, cancel or want to start over.\n'
             '- intent "other" for anything else, with a short friendly `reply` that steers '
             "back to the menu or ordering.\n"
             "Never invent dishes, prices, or policies.\n\n"
+            f"CURRENT STEP: {session.state} (items = adding dishes, confirm = order summary "
+            "shown, waiting for yes/no)\n\n"
             f"MENU\n{menu}\n\nFAQ\n{self.catalog.faq_text()}"
         )
