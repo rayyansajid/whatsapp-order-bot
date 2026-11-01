@@ -14,7 +14,7 @@ from orderbot import whatsapp
 from orderbot.catalog import Catalog, money
 from orderbot.config import Settings
 from orderbot.engine import ConversationEngine
-from orderbot.llm import LLM, AnthropicLLM
+from orderbot.llm import LLM, llm_from_env
 from orderbot.store import OrderStore
 
 
@@ -30,7 +30,7 @@ class ChatOut(BaseModel):
 def create_app(settings: Settings | None = None, llm: LLM | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     store = OrderStore(settings.db_path)
-    engine = ConversationEngine(Catalog.load(settings.data_dir), llm or AnthropicLLM(), store)
+    engine = ConversationEngine(Catalog.load(settings.data_dir), llm or llm_from_env(), store)
     seen_message_ids: deque[str] = deque(maxlen=1000)  # WhatsApp retries deliveries
     basic = HTTPBasic(auto_error=False)
 

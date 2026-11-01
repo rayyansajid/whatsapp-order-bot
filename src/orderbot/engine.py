@@ -11,7 +11,7 @@ import threading
 from dataclasses import dataclass, field
 
 from orderbot.catalog import Catalog, delivery_fee, money
-from orderbot.llm import LLM
+from orderbot.llm import LLM, LLMUnavailableError
 from orderbot.store import OrderStore
 
 log = logging.getLogger(__name__)
@@ -108,6 +108,11 @@ class ConversationEngine:
         try:
             raw = self.llm.complete_json(self._system_prompt(), text, INTERPRET_SCHEMA)
             result = json.loads(raw)
+        except LLMUnavailableError as exc:
+            log.warning("LLM unavailable: %s", exc)
+            return "Sorry, I'm a little busy right now. Please try again in a minute. " + (
+                self._help()
+            )
         except Exception:
             log.exception("LLM call failed")
             return "Sorry, I didn't catch that. " + self._help()
