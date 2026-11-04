@@ -9,7 +9,10 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-GRAPH_URL = "https://graph.facebook.com/v21.0"
+# Checked against developers.facebook.com/docs/graph-api/changelog (2026-11-05):
+# v27.0 is the current Graph API version; the live endpoint accepts it (verified with a probe
+# request). v21.0 still works but expires 2027-01-21, so this tracks the current version instead.
+GRAPH_URL = "https://graph.facebook.com/v27.0"
 
 
 def signature_is_valid(app_secret: str, body: bytes, header: str | None) -> bool:
@@ -36,16 +39,31 @@ def send_text(token: str, phone_id: str, to: str, body: str) -> None:
     if not token or not phone_id:
         log.warning("WHATSAPP_TOKEN or WHATSAPP_PHONE_ID not set; reply not sent")
         return
-    response = httpx.post(
-        f"{GRAPH_URL}/{phone_id}/messages",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "messaging_product": "whatsapp",
-            "to": to,
-            "type": "text",
-            "text": {"body": body},
-        },
-        timeout=10,
-    )
+    try:
+        response = httpx.post(
+            f"{GRAPH_URL}/{phone_id}/messages",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": to,
+                "type": "text",
+                "text": {"body": body},
+            },
+            timeout=10,
+        )
+    except httpx.HTTPError as exc:
+        log.error("WhatsApp send failed: request error (%s)", type(exc).__name__)
+        return
     if response.is_error:
-        log.error("WhatsApp send failed: %s %s", response.status_code, response.text)
+        log.error(
+            "WhatsApp send failed: HTTP %s %s", response.status_code, _safe_error_message(response)
+        )
+
+
+def _safe_error_message(response: httpx.Response) -> str:
+    """Pull just the error message out of Meta's error body (never log headers or the token)."""
+    try:
+        return str(response.json().get("error", {}).get("message", "unknown error"))
+    except ValueError:
+        return "non-JSON error response"

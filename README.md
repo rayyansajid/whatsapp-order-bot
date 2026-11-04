@@ -66,9 +66,11 @@ Keep real values in `.env`, which is gitignored.
 ### Connect WhatsApp (optional)
 
 1. Create an app in Meta for Developers and add the WhatsApp product.
-2. Expose your local server, for example with `ngrok http 8000`.
+2. Expose your local server with a free tunnel, e.g. a Cloudflare Quick Tunnel (no sign-up needed).
 3. Set the callback URL to `https://<your-tunnel>/webhook` and the verify token to your `VERIFY_TOKEN`. Subscribe to the `messages` field.
 4. Message the test number. The bot replies through the Cloud API.
+
+For a full beginner, Windows-friendly walkthrough (account creation, tunnel setup, token expiry, troubleshooting), see [`docs/whatsapp-setup.md`](docs/whatsapp-setup.md).
 
 ## Development
 
