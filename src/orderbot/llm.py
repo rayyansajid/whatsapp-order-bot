@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import time
 from typing import Any, Protocol
 
 import httpx
@@ -10,6 +11,11 @@ import httpx
 log = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "claude-haiku-5-5"
+
+RETRYABLE_STATUSES = {429, 503}
+MAX_RETRIES = 2
+RETRY_BACKOFF = (1.0, 2.0)
+MAX_TOTAL_WAIT = 10.0
 
 # Values from the providers' official docs (checked 2026-11-01):
 # https://ai.google.dev/gemini-api/docs/openai and https://console.groq.com/docs/openai
@@ -107,27 +113,38 @@ class OpenAICompatibleLLM:
             f"{system}\n\nRespond with a single JSON object only, matching this JSON schema:\n"
             f"{json.dumps(schema)}"
         )
-        try:
-            resp = self._client.post(
-                "chat/completions",
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": prompt},
-                        {"role": "user", "content": user},
-                    ],
-                    "response_format": response_format,
-                    "temperature": 0,
-                },
-            )
-        except httpx.TimeoutException as exc:
-            raise LLMUnavailableError("LLM request timed out") from exc
-        except httpx.HTTPError as exc:
-            raise LLMError(f"LLM request failed: {type(exc).__name__}") from exc
+        body = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": user},
+            ],
+            "response_format": response_format,
+            "temperature": 0,
+        }
+        headers = {"Authorization": f"Bearer {self._api_key}"}
 
-        if resp.status_code == 429:
-            raise LLMUnavailableError("LLM rate limit reached")
+        total_wait = 0.0
+        attempt = 0
+        while True:
+            try:
+                resp = self._client.post("chat/completions", headers=headers, json=body)
+            except httpx.TimeoutException as exc:
+                raise LLMUnavailableError("LLM request timed out") from exc
+            except httpx.HTTPError as exc:
+                raise LLMError(f"LLM request failed: {type(exc).__name__}") from exc
+
+            if resp.status_code not in RETRYABLE_STATUSES:
+                break
+            if attempt >= MAX_RETRIES or total_wait >= MAX_TOTAL_WAIT:
+                raise LLMUnavailableError(f"LLM returned HTTP {resp.status_code}")
+
+            wait = min(_retry_delay(resp, attempt), MAX_TOTAL_WAIT - total_wait)
+            attempt += 1
+            log.warning("LLM provider rate limited us, retrying (attempt %d)", attempt)
+            time.sleep(wait)
+            total_wait += wait
+
         if resp.status_code >= 400:
             raise LLMError(f"LLM returned HTTP {resp.status_code}")
 
@@ -138,6 +155,17 @@ class OpenAICompatibleLLM:
             raise LLMError("LLM returned a malformed response") from exc
         _validate(data, schema)
         return json.dumps(data)
+
+
+def _retry_delay(resp: httpx.Response, attempt: int) -> float:
+    """Seconds to wait before the next retry: Retry-After if given, else backoff."""
+    retry_after = resp.headers.get("Retry-After")
+    if retry_after is not None:
+        try:
+            return max(0.0, float(retry_after))
+        except ValueError:
+            pass
+    return RETRY_BACKOFF[attempt]
 
 
 def _validate(data: Any, schema: dict[str, Any]) -> None:
