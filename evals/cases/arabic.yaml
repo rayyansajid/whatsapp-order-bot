@@ -1,0 +1,51 @@
+# Arabic. NOTE: a native speaker needs to check these messages and their
+# expected results before this file's score is trusted (see evals/README note
+# in the PR / results report).
+- message: "اثنان من دجاج بالزبدة وخبز نان واحد"
+  expected:
+    intent: order
+    items:
+      - id: butter-chicken
+        quantity: 2
+      - id: garlic-naan
+        quantity: 1
+- message: "أريد وجبة برياني الدجاج واحدة"
+  expected:
+    intent: order
+    items:
+      - id: chicken-biryani
+        quantity: 1
+- message: "ثلاث سمبوسة وكوبين مانجو لاسي من فضلك"
+  expected:
+    intent: order
+    items:
+      - id: samosa
+        quantity: 3
+      - id: mango-lassi
+        quantity: 2
+- message: "تشانا ماسالا واحدة، أرز بسمتي واحد، وريتا أيضا"
+  expected:
+    intent: order
+    items:
+      - id: chana-masala
+        quantity: 1
+      - id: basmati-rice
+        quantity: 1
+      - id: raita
+        quantity: 1
+- message: "هذا كل ما أريده"
+  expected:
+    intent: finish
+    items: []
+- message: "لا أحتاج أي شيء آخر، شكرا"
+  expected:
+    intent: finish
+    items: []
+- message: "في أي وقت تفتحون؟"
+  expected:
+    intent: question
+    items: []
+- message: "كم رسوم التوصيل؟"
+  expected:
+    intent: question
+    items: []
