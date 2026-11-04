@@ -1,0 +1,50 @@
+# Labeled messages for the order-parsing LLM call. Expected items use the ids
+# and quantities the LLM should extract against the current data/menu.yaml.
+- message: "2 butter chicken and a garlic naan"
+  expected:
+    intent: order
+    items:
+      - id: butter-chicken
+        quantity: 2
+      - id: garlic-naan
+        quantity: 1
+- message: "I'll have one chicken biryani"
+  expected:
+    intent: order
+    items:
+      - id: chicken-biryani
+        quantity: 1
+- message: "Can I get 3 samosas, a lentil soup and 2 mango lassi"
+  expected:
+    intent: order
+    items:
+      - id: samosa
+        quantity: 3
+      - id: lentil-soup
+        quantity: 1
+      - id: mango-lassi
+        quantity: 2
+- message: "One chana masala and two basmati rice please"
+  expected:
+    intent: order
+    items:
+      - id: chana-masala
+        quantity: 1
+      - id: basmati-rice
+        quantity: 2
+- message: "That's all for now"
+  expected:
+    intent: finish
+    items: []
+- message: "Nothing else, I'm done"
+  expected:
+    intent: finish
+    items: []
+- message: "Do you deliver to my area?"
+  expected:
+    intent: question
+    items: []
+- message: "What time do you open?"
+  expected:
+    intent: question
+    items: []
