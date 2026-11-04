@@ -1,0 +1,51 @@
+# French. NOTE: a native speaker needs to check these messages and their
+# expected results before this file's score is trusted (see evals/README note
+# in the PR / results report).
+- message: "Deux butter chicken et un naan, s'il vous plaît"
+  expected:
+    intent: order
+    items:
+      - id: butter-chicken
+        quantity: 2
+      - id: garlic-naan
+        quantity: 1
+- message: "Je voudrais un chicken biryani"
+  expected:
+    intent: order
+    items:
+      - id: chicken-biryani
+        quantity: 1
+- message: "Trois samosas et deux mango lassi"
+  expected:
+    intent: order
+    items:
+      - id: samosa
+        quantity: 3
+      - id: mango-lassi
+        quantity: 2
+- message: "Un chana masala, un riz basmati et une raita aussi"
+  expected:
+    intent: order
+    items:
+      - id: chana-masala
+        quantity: 1
+      - id: basmati-rice
+        quantity: 1
+      - id: raita
+        quantity: 1
+- message: "C'est tout pour moi, merci"
+  expected:
+    intent: finish
+    items: []
+- message: "Je n'ai besoin de rien d'autre"
+  expected:
+    intent: finish
+    items: []
+- message: "À quelle heure ouvrez-vous ?"
+  expected:
+    intent: question
+    items: []
+- message: "Quels sont les frais de livraison ?"
+  expected:
+    intent: question
+    items: []

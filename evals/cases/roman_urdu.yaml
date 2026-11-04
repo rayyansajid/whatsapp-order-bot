@@ -1,0 +1,51 @@
+# Romanized Urdu. NOTE: a native Urdu speaker must review these messages and
+# their expected results before this file's score is trusted (see evals/README
+# note in the PR / results report).
+- message: "2 butter chicken aur ek naan chahiye"
+  expected:
+    intent: order
+    items:
+      - id: butter-chicken
+        quantity: 2
+      - id: garlic-naan
+        quantity: 1
+- message: "Mujhe ek chicken biryani chahiye"
+  expected:
+    intent: order
+    items:
+      - id: chicken-biryani
+        quantity: 1
+- message: "3 samosay aur do mango lassi de dena"
+  expected:
+    intent: order
+    items:
+      - id: samosa
+        quantity: 3
+      - id: mango-lassi
+        quantity: 2
+- message: "Ek chana masala, ek basmati rice aur raita bhi"
+  expected:
+    intent: order
+    items:
+      - id: chana-masala
+        quantity: 1
+      - id: basmati-rice
+        quantity: 1
+      - id: raita
+        quantity: 1
+- message: "Bas itna hi chahiye"
+  expected:
+    intent: finish
+    items: []
+- message: "Mujhe aur kuch nahi chahiye, shukriya"
+  expected:
+    intent: finish
+    items: []
+- message: "Aap kitne baje khulte hain?"
+  expected:
+    intent: question
+    items: []
+- message: "Delivery ka charge kitna hai?"
+  expected:
+    intent: question
+    items: []

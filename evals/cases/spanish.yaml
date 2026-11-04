@@ -1,0 +1,51 @@
+# Spanish. NOTE: a native speaker needs to check these messages and their
+# expected results before this file's score is trusted (see evals/README note
+# in the PR / results report).
+- message: "Dos butter chicken y un naan, por favor"
+  expected:
+    intent: order
+    items:
+      - id: butter-chicken
+        quantity: 2
+      - id: garlic-naan
+        quantity: 1
+- message: "Quiero un chicken biryani"
+  expected:
+    intent: order
+    items:
+      - id: chicken-biryani
+        quantity: 1
+- message: "Tres samosas y dos mango lassi"
+  expected:
+    intent: order
+    items:
+      - id: samosa
+        quantity: 3
+      - id: mango-lassi
+        quantity: 2
+- message: "Un chana masala, un arroz basmati y una raita también"
+  expected:
+    intent: order
+    items:
+      - id: chana-masala
+        quantity: 1
+      - id: basmati-rice
+        quantity: 1
+      - id: raita
+        quantity: 1
+- message: "Eso es todo, gracias"
+  expected:
+    intent: finish
+    items: []
+- message: "No necesito nada más"
+  expected:
+    intent: finish
+    items: []
+- message: "¿A qué hora abren?"
+  expected:
+    intent: question
+    items: []
+- message: "¿Cuánto cuesta el envío?"
+  expected:
+    intent: question
+    items: []
