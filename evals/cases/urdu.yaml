@@ -1,0 +1,51 @@
+# Urdu script. NOTE: a native Urdu speaker must review these messages and
+# their expected results before this file's score is trusted (see evals/README
+# note in the PR / results report).
+- message: "دو بٹر چکن اور ایک نان چاہیے"
+  expected:
+    intent: order
+    items:
+      - id: butter-chicken
+        quantity: 2
+      - id: garlic-naan
+        quantity: 1
+- message: "مجھے ایک چکن بریانی چاہیے"
+  expected:
+    intent: order
+    items:
+      - id: chicken-biryani
+        quantity: 1
+- message: "تین سموسے اور دو مینگو لسی دے دیں"
+  expected:
+    intent: order
+    items:
+      - id: samosa
+        quantity: 3
+      - id: mango-lassi
+        quantity: 2
+- message: "ایک چنا مسالہ، ایک باسمتی رائس اور رائتہ بھی"
+  expected:
+    intent: order
+    items:
+      - id: chana-masala
+        quantity: 1
+      - id: basmati-rice
+        quantity: 1
+      - id: raita
+        quantity: 1
+- message: "بس اتنا ہی چاہیے"
+  expected:
+    intent: finish
+    items: []
+- message: "مجھے اور کچھ نہیں چاہیے، شکریہ"
+  expected:
+    intent: finish
+    items: []
+- message: "آپ کتنے بجے کھلتے ہیں؟"
+  expected:
+    intent: question
+    items: []
+- message: "ڈیلیوری کا چارج کتنا ہے؟"
+  expected:
+    intent: question
+    items: []
