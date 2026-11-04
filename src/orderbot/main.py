@@ -1,5 +1,6 @@
 import html
 import json
+import logging
 import secrets
 from collections import deque
 from importlib.resources import files
@@ -17,6 +18,8 @@ from orderbot.engine import ConversationEngine
 from orderbot.llm import LLM, llm_from_env
 from orderbot.store import OrderStore
 
+log = logging.getLogger(__name__)
+
 
 class ChatIn(BaseModel):
     session_id: str = Field(min_length=1, max_length=64)
@@ -31,6 +34,13 @@ def create_app(settings: Settings | None = None, llm: LLM | None = None) -> Fast
     settings = settings or Settings.from_env()
     store = OrderStore(settings.db_path)
     engine = ConversationEngine(Catalog.load(settings.data_dir), llm or llm_from_env(), store)
+    log.info(
+        "WhatsApp config set: token=%s phone_id=%s app_secret=%s verify_token=%s",
+        bool(settings.whatsapp_token),
+        bool(settings.whatsapp_phone_id),
+        bool(settings.whatsapp_app_secret),
+        bool(settings.verify_token),
+    )
     seen_message_ids: deque[str] = deque(maxlen=1000)  # WhatsApp retries deliveries
     basic = HTTPBasic(auto_error=False)
 
