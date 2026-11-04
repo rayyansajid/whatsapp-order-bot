@@ -87,3 +87,38 @@ def test_address_step_asks_again_when_not_an_address(make_client) -> None:
     assert "full address" in say("I live with Tony Stark")
     summary = say("I live at 10880 Malibu Point")
     assert "Deliver to: 10880 Malibu Point" in summary
+
+
+def test_confirm_intent_during_items_asks_for_name_without_placing_order(make_client) -> None:
+    """A "confirm" intent from the LLM during items must not place an order -
+    only the confirm step (after name/address) can do that."""
+    client, say = _start_cart(make_client)
+    client.app.state.engine.llm.responses.append(
+        json.dumps(
+            {
+                "intent": "confirm",
+                "items": [],
+                "reply": "Your order has been placed and will be delivered shortly!",
+            }
+        )
+    )
+    assert "name" in say("confirm my order")
+    assert client.app.state.store.list_orders() == []
+
+
+def test_llm_reply_claiming_order_placed_is_replaced_in_idle(make_client) -> None:
+    llm = FakeLLM(
+        json.dumps(
+            {
+                "intent": "other",
+                "items": [],
+                "reply": "Your order has been placed and will be delivered shortly!",
+            }
+        )
+    )
+    client = make_client(llm)
+    reply = client.post(
+        "/api/chat", json={"session_id": "s1", "message": "is my food coming"}
+    ).json()["reply"]
+    assert "placed" not in reply
+    assert "delivered" not in reply

@@ -65,6 +65,13 @@ MENU_RE = re.compile(
     r"\b(menu|prices?|price list|list of (items|dishes|food)"
     r"|what (do|can) you (have|serve|sell|offer)|what'?s available)\b"
 )
+# Only the engine may say an order was placed/confirmed/delivered. Catches LLM
+# free-text replies that falsely claim this so they can be swapped out.
+ORDER_CLAIM_RE = re.compile(
+    r"\border\b[^.!?\n]{0,40}\b(placed|confirmed|on (its|it's) way|delivered)\b"
+    r"|\b(placed|confirmed)\b[^.!?\n]{0,40}\border\b",
+    re.IGNORECASE,
+)
 
 NAME_SCHEMA = {
     "type": "object",
@@ -251,7 +258,9 @@ class ConversationEngine:
                 session.cart[item.id] = min(session.cart.get(item.id, 0) + qty, MAX_QUANTITY)
                 added.append(f"{qty} × {item.name}")
 
-        if result.get("intent") == "finish" and session.state == "items":
+        # "confirm" during items means "I'm done adding items", not "place my order" -
+        # only the confirm step can actually place an order.
+        if result.get("intent") in ("finish", "confirm") and session.state == "items":
             prefix = "Added " + ", ".join(added) + ".\n\n" if added else ""
             return prefix + self._finish_items(session)
         if added:
@@ -264,6 +273,16 @@ class ConversationEngine:
                 + "\n\nAnything else? Reply *done* when you're finished."
             )
         reply = str(result.get("reply") or "").strip()
+        if reply and ORDER_CLAIM_RE.search(reply):
+            log.warning("Blocked LLM reply falsely claiming an order was placed")
+            reply = (
+                self._help()
+                if session.state != "items"
+                else (
+                    "Let's continue your order - what would you like to add? "
+                    "Say *done* when you're finished."
+                )
+            )
         return reply or "Sorry, I didn't catch that. " + self._help()
 
     def _place_order(self, customer_id: str, session: Session) -> str:
@@ -349,7 +368,9 @@ class ConversationEngine:
             "- Never make claims about allergens, dietary suitability (e.g. for children, "
             "vegans, diabetics) or health, and don't recommend dishes on that basis.\n"
             "- Only help with ordering from this restaurant. Politely decline unrelated "
-            "requests and offer to help with an order instead.\n\n"
+            "requests and offer to help with an order instead.\n"
+            "- Never state or imply that an order has been placed, confirmed, or is on its "
+            "way or delivered; the system does that, not you.\n\n"
             f"CURRENT STEP: {session.state} (items = adding dishes, confirm = order summary "
             "shown, waiting for yes/no)\n\n"
             f"MENU\n{menu}\n\nFAQ\n{self.catalog.faq_text()}"
