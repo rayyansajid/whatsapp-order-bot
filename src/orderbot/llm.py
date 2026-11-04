@@ -174,13 +174,16 @@ def llm_from_env() -> LLM:
     provider = (env("LLM_PROVIDER") or "gemini").strip().lower()
     override = env("LLM_MODEL") or None
     if provider == "anthropic":
+        log.info("LLM provider active: anthropic")
         return AnthropicLLM(model=override)
     if provider == "groq":
+        log.info("LLM provider active: groq")
         return OpenAICompatibleLLM(
             GROQ_BASE_URL, override or GROQ_DEFAULT_MODEL, env("GROQ_API_KEY", "")
         )
     if provider != "gemini":
         log.warning("Unknown LLM_PROVIDER %r, using gemini", provider)
+    log.info("LLM provider active: gemini")
     return OpenAICompatibleLLM(
         GEMINI_BASE_URL,
         override or GEMINI_DEFAULT_MODEL,
