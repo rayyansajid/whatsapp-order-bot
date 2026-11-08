@@ -24,3 +24,4 @@ Portfolio demo: a WhatsApp ordering bot for **Saffron Lane Kitchen**, a fictiona
 - When done, push the branch and open the PR with `gh pr create --base main`. Write the title and body yourself: summary, tests, notes.
 - Print the PR URL. Don't paste the PR body into the chat summary.
 - The human only merges the PR and deletes the branch.
+- Never add references to Claude, Anthropic or any AI tool, "Generated with ..." lines, Co-Authored-By trailers or session links in commit messages, PR titles or PR bodies. Commit and PR text must read as plain, human-written project text.

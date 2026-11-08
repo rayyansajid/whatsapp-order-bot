@@ -96,3 +96,7 @@ uv run ruff check . && uv run ruff format --check . # lint + format check
 
 - Conversation state is kept in memory, so it resets on restart and assumes a single worker process. Orders are saved in SQLite.
 - Only text messages are handled on WhatsApp.
+
+## Commit conventions
+
+Commit messages and pull request descriptions are plain project text: no tool or AI attribution, trailers or session links.
