@@ -19,7 +19,13 @@ def make_llm(content: str) -> OpenAICompatibleLLM:
 
 def test_parses_valid_json_response():
     content = json.dumps(
-        {"intent": "order", "items": [{"id": "butter-chicken", "quantity": 2}], "reply": ""}
+        {
+            "intent": "order",
+            "items": [{"id": "butter-chicken", "quantity": 2}],
+            "notes": "",
+            "is_allergy": False,
+            "reply": "",
+        }
     )
     result = json.loads(
         make_llm(content).complete_json("sys", "2 butter chicken", INTERPRET_SCHEMA)
@@ -34,7 +40,9 @@ def test_invalid_response_raises_llm_error():
 
 def test_429_then_success_retries_and_returns_result(monkeypatch):
     monkeypatch.setattr("orderbot.llm.time.sleep", lambda _seconds: None)
-    content = json.dumps({"intent": "order", "items": [], "reply": ""})
+    content = json.dumps(
+        {"intent": "order", "items": [], "notes": "", "is_allergy": False, "reply": ""}
+    )
     calls = {"count": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:

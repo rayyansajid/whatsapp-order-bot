@@ -11,6 +11,8 @@ A sample ordering assistant for **Saffron Lane Kitchen**, a fictional restaurant
 - **Web chat** at `/`, so you can try the demo without WhatsApp.
 - **WhatsApp Cloud API webhook** at `/webhook` (GET verification, POST messages). It uses the same engine.
 - **Orders page** at `/orders`: a read-only table for the owner.
+- **Special requests**: a preparation or delivery request mentioned anywhere during an order (e.g. "mild spice", "no onions", "ring the bell") is saved as a note, shown in the order summary and on `/orders`. Personal health details are filtered out; stated allergies are kept verbatim and flagged, with a reply telling the customer to confirm allergies with staff directly — the bot never claims a dish is allergen-safe.
+- **Owner alerts**: if `OWNER_WHATSAPP_NUMBER` is set, the owner gets a WhatsApp message with each new order's details, sent in the background so the customer's confirmation is never delayed.
 - Orders are stored in SQLite (`orders.db` by default).
 
 ## Run it
@@ -60,6 +62,7 @@ Set `LLM_MODEL` to use another model from the same provider. Free tiers have rat
 | `WHATSAPP_APP_SECRET` | Optional. If set, POSTs must carry a valid `X-Hub-Signature-256` |
 | `ADMIN_PASSWORD` | Optional. If set, `/orders` requires HTTP Basic auth (any username) |
 | `ORDERBOT_DB` | SQLite file path (default `orders.db`) |
+| `OWNER_WHATSAPP_NUMBER` | Optional. Owner's WhatsApp number; if set, they get a WhatsApp alert for each new order. See [`docs/whatsapp-setup.md`](docs/whatsapp-setup.md) for the 24-hour messaging-window caveat |
 
 Keep real values in `.env`, which is gitignored.
 

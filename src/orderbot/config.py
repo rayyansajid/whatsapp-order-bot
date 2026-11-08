@@ -16,6 +16,7 @@ class Settings:
     whatsapp_phone_id: str = ""
     whatsapp_app_secret: str = ""
     admin_password: str = ""
+    owner_whatsapp_number: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -28,4 +29,5 @@ class Settings:
             whatsapp_phone_id=env("WHATSAPP_PHONE_ID", ""),
             whatsapp_app_secret=env("WHATSAPP_APP_SECRET", ""),
             admin_password=env("ADMIN_PASSWORD", ""),
+            owner_whatsapp_number=env("OWNER_WHATSAPP_NUMBER", ""),
         )
