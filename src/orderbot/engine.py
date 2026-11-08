@@ -9,6 +9,7 @@ import json
 import logging
 import re
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from orderbot.catalog import Catalog, delivery_fee, money
@@ -18,6 +19,13 @@ from orderbot.store import OrderStore
 log = logging.getLogger(__name__)
 
 MAX_QUANTITY = 20
+MAX_NOTES_LEN = 300
+ALLERGY_PREFIX = "ALLERGY (customer-stated, not verified): "
+ALLERGY_NOTICE = (
+    "I've let the kitchen know about that. Please confirm any allergies directly with "
+    "the restaurant staff before your order arrives — we can't guarantee a dish is "
+    "allergen-safe."
+)
 
 INTERPRET_SCHEMA = {
     "type": "object",
@@ -38,9 +46,11 @@ INTERPRET_SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        "notes": {"type": "string"},
+        "is_allergy": {"type": "boolean"},
         "reply": {"type": "string"},
     },
-    "required": ["intent", "items", "reply"],
+    "required": ["intent", "items", "notes", "is_allergy", "reply"],
     "additionalProperties": False,
 }
 
@@ -129,13 +139,25 @@ class Session:
     name: str = ""
     address: str = ""
     address_retry: bool = False
+    notes: str = ""
+
+
+# Called after an order is placed, with (order_id, items, total_cents, name, address, notes).
+NotifyOwner = Callable[[int, list[dict], int, str, str, str], None]
 
 
 class ConversationEngine:
-    def __init__(self, catalog: Catalog, llm: LLM, store: OrderStore) -> None:
+    def __init__(
+        self,
+        catalog: Catalog,
+        llm: LLM,
+        store: OrderStore,
+        notify_owner: NotifyOwner | None = None,
+    ) -> None:
         self.catalog = catalog
         self.llm = llm
         self.store = store
+        self._notify_owner = notify_owner
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
         self._menu_words = {
@@ -172,16 +194,21 @@ class ConversationEngine:
                 return self._place_order(customer_id, session)
             norm = normalize(text)
             said_yes, said_no = bool(YES_RE.search(norm)), bool(NO_RE.search(norm))
+            notice = ""
             if said_yes != said_no:
                 intent = "confirm" if said_yes else "cancel"
             else:  # neither or both: let the LLM decide
-                intent = self._interpret_intent(session, text)
+                intent, notice = self._interpret_intent(session, text)
             if intent == "confirm":
-                return self._place_order(customer_id, session)
+                return self._with_notice(self._place_order(customer_id, session), notice)
             if intent == "cancel":
                 self._sessions[customer_id] = Session()
-                return "No problem, I've cancelled that order. Say *order* to start again."
-            return "Please reply *yes* to place the order, or *cancel* to start over."
+                return self._with_notice(
+                    "No problem, I've cancelled that order. Say *order* to start again.", notice
+                )
+            return self._with_notice(
+                "Please reply *yes* to place the order, or *cancel* to start over.", notice
+            )
 
         # idle / items: commands first, then FAQ, then the LLM
         if low in GREETINGS:
@@ -229,13 +256,32 @@ class ConversationEngine:
         session.state = "name"
         return "Great! What name should we put the order under?"
 
-    def _interpret_intent(self, session: Session, text: str) -> str:
+    def _interpret_intent(self, session: Session, text: str) -> tuple[str, str]:
         try:
             raw = self.llm.complete_json(self._system_prompt(session), text, INTERPRET_SCHEMA)
-            return str(json.loads(raw).get("intent") or "other")
+            result = json.loads(raw)
         except Exception as exc:
             log.warning("LLM intent check failed: %s", exc)
-            return "other"
+            return "other", ""
+        notice = self._apply_notes(session, result)
+        return str(result.get("intent") or "other"), notice
+
+    def _apply_notes(self, session: Session, result: dict) -> str:
+        """Append any preparation/delivery note from an LLM result to the session.
+
+        Returns an allergy disclaimer to show the customer, or "" if none applies.
+        """
+        note = str(result.get("notes") or "").strip()
+        if not note:
+            return ""
+        is_allergy = bool(result.get("is_allergy"))
+        if is_allergy:
+            note = ALLERGY_PREFIX + note
+        session.notes = (session.notes + ("; " if session.notes else "") + note)[:MAX_NOTES_LEN]
+        return ALLERGY_NOTICE if is_allergy else ""
+
+    def _with_notice(self, reply: str, notice: str) -> str:
+        return f"{notice}\n\n{reply}" if notice else reply
 
     def _interpret(self, session: Session, text: str) -> str:
         try:
@@ -250,6 +296,8 @@ class ConversationEngine:
             log.exception("LLM call failed")
             return "Sorry, I didn't catch that. " + self._help()
 
+        notice = self._apply_notes(session, result)
+
         added = []
         for entry in result.get("items") or []:
             item = self.catalog.items.get(str(entry.get("id")))
@@ -262,15 +310,16 @@ class ConversationEngine:
         # only the confirm step can actually place an order.
         if result.get("intent") in ("finish", "confirm") and session.state == "items":
             prefix = "Added " + ", ".join(added) + ".\n\n" if added else ""
-            return prefix + self._finish_items(session)
+            return self._with_notice(prefix + self._finish_items(session), notice)
         if added:
             session.state = "items"
-            return (
+            return self._with_notice(
                 "Added "
                 + ", ".join(added)
                 + ".\n\n"
                 + self._cart_text(session)
-                + "\n\nAnything else? Reply *done* when you're finished."
+                + "\n\nAnything else? Reply *done* when you're finished.",
+                notice,
             )
         reply = str(result.get("reply") or "").strip()
         if reply and ORDER_CLAIM_RE.search(reply):
@@ -283,7 +332,7 @@ class ConversationEngine:
                     "Say *done* when you're finished."
                 )
             )
-        return reply or "Sorry, I didn't catch that. " + self._help()
+        return self._with_notice(reply or "Sorry, I didn't catch that. " + self._help(), notice)
 
     def _place_order(self, customer_id: str, session: Session) -> str:
         items, subtotal = self._lines(session)
@@ -293,14 +342,43 @@ class ConversationEngine:
             name=session.name,
             address=session.address,
             items=items,
+            notes=session.notes,
             subtotal_cents=subtotal,
             delivery_cents=fee,
         )
+        if self._notify_owner is not None:
+            threading.Thread(
+                target=self._safe_notify_owner,
+                args=(
+                    order_id,
+                    items,
+                    subtotal + fee,
+                    session.name,
+                    session.address,
+                    session.notes,
+                ),
+                daemon=True,
+            ).start()
         self._sessions[customer_id] = Session()
         return (
             f"✅ Order #{order_id} confirmed! Total {money(subtotal + fee)}, "
             "paid on delivery. It should arrive in 35–50 minutes."
         )
+
+    def _safe_notify_owner(
+        self,
+        order_id: int,
+        items: list[dict],
+        total_cents: int,
+        name: str,
+        address: str,
+        notes: str,
+    ) -> None:
+        try:
+            assert self._notify_owner is not None
+            self._notify_owner(order_id, items, total_cents, name, address, notes)
+        except Exception:
+            log.exception("Owner alert failed")
 
     def _lines(self, session: Session) -> tuple[list[dict], int]:
         items, subtotal = [], 0
@@ -327,6 +405,7 @@ class ConversationEngine:
             + f"\nDelivery: {money(fee) if fee else 'free'}"
             + f"\n*Total: {money(subtotal + fee)}*"
             + f"\n\nName: {session.name}\nDeliver to: {session.address}"
+            + (f"\nNotes: {session.notes}" if session.notes else "")
         )
 
     def _welcome(self) -> str:
@@ -358,7 +437,13 @@ class ConversationEngine:
             '- intent "confirm" if they agree to place the order (e.g. "yeah go ahead").\n'
             '- intent "cancel" if they decline, cancel or want to start over.\n'
             '- intent "other" for anything else, with a short friendly `reply` that steers '
-            "back to the menu or ordering.\n\n"
+            "back to the menu or ordering.\n"
+            "- `notes`: any preparation or delivery request in this message (e.g. "
+            '"mild spice", "no onions", "ring the bell"). Keep only the request itself - '
+            'never personal health details (e.g. from "I have a throat infection, so keep '
+            'it mild" keep only "keep it mild"). Empty string if there is none.\n'
+            "- `is_allergy`: true if the customer states an allergy (e.g. \"I'm allergic to "
+            'peanuts"). When true, put that statement verbatim in `notes`.\n\n'
             "GROUNDING RULES (always follow):\n"
             "- Only state facts that appear in the MENU and FAQ below. Never invent dishes, "
             "prices, policies or details.\n"
