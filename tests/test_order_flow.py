@@ -106,6 +106,35 @@ def test_confirm_intent_during_items_asks_for_name_without_placing_order(make_cl
     assert client.app.state.store.list_orders() == []
 
 
+def test_special_request_is_saved_as_notes_and_shown_in_summary(make_client) -> None:
+    llm = FakeLLM(
+        json.dumps(
+            {
+                "intent": "order",
+                "items": [{"id": "butter-chicken", "quantity": 1}],
+                "notes": "mild spice",
+                "is_allergy": False,
+                "reply": "",
+            }
+        )
+    )
+    client = make_client(llm)
+
+    def say(text: str) -> str:
+        return client.post("/api/chat", json={"session_id": "s1", "message": text}).json()["reply"]
+
+    say("hi")
+    say("1 butter chicken, keep the spices mild")
+    say("done")
+    say("Alex")
+    summary = say("12 Test Street")
+
+    assert "Notes: mild spice" in summary
+    say("yes")
+    [order] = client.app.state.store.list_orders()
+    assert order.notes == "mild spice"
+
+
 def test_llm_reply_claiming_order_placed_is_replaced_in_idle(make_client) -> None:
     llm = FakeLLM(
         json.dumps(

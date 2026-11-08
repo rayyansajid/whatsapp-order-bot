@@ -33,7 +33,28 @@ class ChatOut(BaseModel):
 def create_app(settings: Settings | None = None, llm: LLM | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     store = OrderStore(settings.db_path)
-    engine = ConversationEngine(Catalog.load(settings.data_dir), llm or llm_from_env(), store)
+
+    def send_owner_alert(
+        order_id: int, items: list[dict], total_cents: int, name: str, address: str, notes: str
+    ) -> None:
+        lines = [f"New order #{order_id}"]
+        lines += [f"{i['quantity']} × {i['name']}" for i in items]
+        if notes:
+            lines.append(f"Notes: {notes}")
+        lines += [f"Name: {name}", f"Address: {address}", f"Total: {money(total_cents)}"]
+        whatsapp.send_text(
+            settings.whatsapp_token,
+            settings.whatsapp_phone_id,
+            settings.owner_whatsapp_number,
+            "\n".join(lines),
+        )
+
+    engine = ConversationEngine(
+        Catalog.load(settings.data_dir),
+        llm or llm_from_env(),
+        store,
+        notify_owner=send_owner_alert if settings.owner_whatsapp_number else None,
+    )
     log.info(
         "WhatsApp config set: token=%s phone_id=%s app_secret=%s verify_token=%s",
         bool(settings.whatsapp_token),
@@ -121,10 +142,11 @@ def render_orders(store: OrderStore) -> str:
             html.escape(o.name),
             html.escape(o.address),
             items,
+            html.escape(o.notes) if o.notes else "",
             money(o.total_cents),
         ]
         rows.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
-    body = "".join(rows) or '<tr><td colspan="6" class="empty">No orders yet.</td></tr>'
+    body = "".join(rows) or '<tr><td colspan="7" class="empty">No orders yet.</td></tr>'
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -146,7 +168,7 @@ def render_orders(store: OrderStore) -> str:
 <p>Read-only view for the owner. Sample data for a fictional restaurant.</p>
 <div class="wrap"><table>
 <thead><tr><th>Order</th><th>Placed (UTC)</th><th>Name</th><th>Address</th><th>Items</th>
-<th>Total</th></tr></thead>
+<th>Notes</th><th>Total</th></tr></thead>
 <tbody>{body}</tbody></table></div>
 </body></html>"""
 

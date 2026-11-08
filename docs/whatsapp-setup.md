@@ -119,6 +119,26 @@ of these options (and whether "Never" is actually offered) can depend on whether
 Account is verified; if a step above isn't available to you, that's Meta gating it behind
 business verification, not something wrong with this repo.
 
+## Owner alerts (`OWNER_WHATSAPP_NUMBER`)
+
+If you set `OWNER_WHATSAPP_NUMBER` in `.env`, the bot sends the owner a free-form WhatsApp
+text with each new order's details, through the same Cloud API number used for customer
+replies.
+
+**WhatsApp only allows free-form (non-template) messages to a number that has messaged your
+bot's number in the last 24 hours.** This is a WhatsApp Business Platform rule, not something
+this repo can work around:
+
+- For this demo, the owner's phone must first send any message (e.g. "hi") to the bot's test
+  number, the same way a customer would. That opens a 24-hour window in which the bot can
+  freely message that number back. If the window lapses, send "hi" again.
+- If the alert doesn't arrive, check the server log: `orderbot.whatsapp` logs the HTTP status
+  and Meta's error message (never the token) when a send fails, and a message to a number
+  outside its 24-hour window is a common cause.
+- **In production**, you can't rely on the owner texting the bot every day. Meta requires an
+  **approved message template** to message a number outside the 24-hour window. This repo does
+  not implement template messages — `OWNER_WHATSAPP_NUMBER` is demo-only until that's added.
+
 ## If the bot doesn't reply
 
 Check these in order:
